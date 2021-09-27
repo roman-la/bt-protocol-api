@@ -1,6 +1,6 @@
 # bt-protocol-api
 
-Python Flask REST API for serving data written by https://github.com/roman-la/bt-protocol-processing into a Neo4j database.
+Python Flask REST API for serving data from a Neo4j database written by https://github.com/roman-la/bt-protocol-processing.
 
 ## Requirements
 
