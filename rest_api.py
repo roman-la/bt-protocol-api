@@ -40,11 +40,12 @@ def construct_blueprint(cache):
                                  'm.pagerank, m.eigenvector, count(DISTINCT(c))')[0]
 
         mdbs = []
-        for entry in result:
-            mdbs.append({'name': f'{entry[0]} {entry[1]}',
+        for i, entry in enumerate(result):
+            mdbs.append({'key': i,
+                         'name': f'{entry[0]} {entry[1]}',
                          'faction': entry[2],
-                         'pagerank': entry[3],
-                         'eigenvector': entry[4],
+                         'pagerank': round(entry[3], 10),
+                         'eigenvector': round(entry[4], 10),
                          'comments': entry[5]})
 
         return json.dumps(mdbs)
@@ -62,11 +63,12 @@ def construct_blueprint(cache):
                                  'c.text, c.polarity')[0]
 
         comments = []
-        for entry in result:
-            comments.append({'sender': f'{entry[0]} {entry[1]} ({entry[2]})',
+        for i, entry in enumerate(result):
+            comments.append({'key': i,
+                             'sender': f'{entry[0]} {entry[1]} ({entry[2]})',
                              'receiver': f'{entry[3]} {entry[4]} ({entry[5]})',
                              'comment': entry[6],
-                             'polarity': entry[7]})
+                             'polarity': round(entry[7], 5)})
 
         return json.dumps(comments)
 
@@ -80,14 +82,11 @@ def construct_blueprint(cache):
                                  '(c)-[:TO]->(r:Mdb), '
                                  '(s)-[:PART_OF]->(sf:Faction), '
                                  '(r)-[:PART_OF]->(rf:Faction) '
-                                 'RETURN DISTINCT id(c), sf.name, rf.name')[0]
+                                 'WHERE sf.name <> rf.name '
+                                 'RETURN sf.name, rf.name, count(DISTINCT c)')[0]
 
         for entry in result:
-            matrix[faction_ranks[entry[1]]][faction_ranks[entry[2]]] += 1
-
-        # Ignore from/to own faction
-        for i in range(7):
-            matrix[i][i] = 0
+            matrix[faction_ranks[entry[0]]][faction_ranks[entry[1]]] = entry[2]
 
         return json.dumps(matrix)
 
@@ -135,12 +134,20 @@ def construct_blueprint(cache):
             receiver_faction = entry[1]
             polarity = float(entry[2])
 
+            color = 'hsl(0, 100%, 100%)'
+            if polarity > 0:
+                color = f'hsl(125, 100%, {50 * (2 - polarity * 2)}%)'
+            elif polarity < 0:
+                color = f'hsl(0, 100%, {50 * (2 - polarity * -1 * 2)}%)'
+
             for point in points:
                 if point['id'] == sender_faction:
                     if sender_faction == receiver_faction:
                         point[receiver_faction] = 0
+                        point[receiver_faction + 'Color'] = 'hsl(0, 100%, 100%)'
                     else:
                         point[receiver_faction] = polarity
+                        point[receiver_faction + 'Color'] = color
 
         return json.dumps(points)
 
