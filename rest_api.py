@@ -1,4 +1,4 @@
-from flask import Blueprint
+from flask import Blueprint, request
 import json
 from neomodel import config, db
 
@@ -31,9 +31,25 @@ def construct_blueprint(cache):
 
         return json.dumps(factions)
 
-    @blueprint.route('/pagerank_table', methods=['GET'])
+    @blueprint.route('/mdbs', methods=['GET'])
     @cache.cached()
     def get_mdbs():
+        result = db.cypher_query('MATCH (f:Faction)<-[r:PART_OF]-(m:Mdb) '
+                                 'WHERE r.start="2017-10-24" '
+                                 'RETURN m.mdb_id, m.last_name, m.first_name, f.name, f.color')[0]
+
+        mdbs = []
+        for entry in result:
+            mdbs.append({'mdb_id': entry[0],
+                         'name': f'{entry[1]}, {entry[2]}',
+                         'faction': entry[3],
+                         'color': entry[4]})
+
+        return json.dumps(sorted(mdbs, key=lambda x: x['name']))
+
+    @blueprint.route('/pagerank_table', methods=['GET'])
+    @cache.cached()
+    def get_pagerank_table():
         result = db.cypher_query('MATCH (m:Mdb)-[:PART_OF]->(f:Faction), '
                                  '(c:Comment)-[:FROM]->(m) '
                                  'RETURN m.first_name, m.last_name, f.name, '
@@ -150,5 +166,34 @@ def construct_blueprint(cache):
                         point[receiver_faction + 'Color'] = color
 
         return json.dumps(points)
+
+    @blueprint.route('/polarity_bar', methods=['GET'])
+    def get_polarity_bar():
+        receiver_id = request.args['id']
+
+        cached_result = cache.get(receiver_id)
+        if cached_result:
+            return json.dumps(cached_result)
+
+        result_bot = db.cypher_query('MATCH (t:Mdb)<-[:TO]-(c:Comment)-[:FROM]->(s:Mdb) '
+                                     f'WHERE t.mdb_id = "{receiver_id}" '
+                                     'RETURN s.first_name, s.last_name, sum(c.polarity) as sum '
+                                     'ORDER BY sum LIMIT 5')[0]
+
+        result_top = db.cypher_query('MATCH (t:Mdb)<-[:TO]-(c:Comment)-[:FROM]->(s:Mdb) '
+                                     f'WHERE t.mdb_id = "{receiver_id}" '
+                                     'RETURN s.first_name, s.last_name, sum(c.polarity) as sum '
+                                     'ORDER BY sum DESC LIMIT 5')[0]
+
+        results = []
+        for entry in result_top + result_bot:
+            results.append({
+                'id': f'{entry[0]} {entry[1]}',
+                'polarity': round(entry[2], 10)
+            })
+
+        cache.set(receiver_id, results)
+
+        return json.dumps(results)
 
     return blueprint
